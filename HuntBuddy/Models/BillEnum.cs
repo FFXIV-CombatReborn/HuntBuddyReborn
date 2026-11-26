@@ -1,4 +1,4 @@
-﻿namespace HuntBuddy;
+namespace HuntBuddy.Models;
 
 public enum BillEnum: uint {
 	ArrRank1,
