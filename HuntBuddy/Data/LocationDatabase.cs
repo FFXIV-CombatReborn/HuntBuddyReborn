@@ -1,17 +1,9 @@
-﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 
-using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+namespace HuntBuddy.Data;
 
-using Lumina.Excel.Sheets;
-
-using MapType = FFXIVClientStructs.FFXIV.Client.UI.Agent.MapType;
-
-namespace HuntBuddy;
-
-public static class Location {
+public static class LocationDatabase {
 	public class PositionInfo {
 		public float X {
 			get;
@@ -26,7 +18,6 @@ public static class Location {
 		public Vector2 Coordinate => new(this.X, this.Y);
 	}
 
-	// MobHuntId as key
 	public static readonly Dictionary<uint, PositionInfo> Database = new() {
 		// Heavensward
 		// Coerthas Western Highlands
@@ -583,95 +574,4 @@ public static class Location {
 		{ 13122, new PositionInfo { X = 17.7f, Y = 30.5f } }, // Torbalan
 		{ 13138, new PositionInfo { X = 11.8f, Y = 12.9f } }, // Walking Tree
 	};
-
-	public enum OpenType {
-		None, // Just place marker
-		ShowOpen, // Show special map with radius
-		MarkerOpen // Show normal map
-	}
-
-	public static unsafe void CreateMapMarker(uint territoryType, uint mapId, uint mobHuntId, string? mobHuntName,
-		OpenType openType = OpenType.MarkerOpen) {
-		AgentMap* map = AgentMap.Instance();
-
-		if (map == null) {
-			return;
-		}
-
-		(int X, int Y) pos = MapToWorldCoordinates(Database[mobHuntId].Coordinate, mapId);
-
-		map->FlagMarkerCount = 0; // Weird hack to make the map marker show up
-		map->SetFlagMapMarker(territoryType, mapId, pos.X, pos.Y, 60004);
-
-		switch (openType) {
-			case OpenType.None:
-				break;
-			case OpenType.ShowOpen:
-				map->AgentInterface.Hide();
-				map->AddGatheringTempMarker(pos.X, pos.Y, 150, 60004, 4, mobHuntName);
-				map->OpenMap(mapId, territoryType, mobHuntName, MapType.GatheringLog);
-				break;
-			case OpenType.MarkerOpen:
-				map->AgentInterface.Hide();
-				map->OpenMap(mapId, territoryType);
-				break;
-			default:
-				throw new ArgumentOutOfRangeException(nameof(openType), openType, null);
-		}
-	}
-
-	private static (int X, int Y) MapToWorldCoordinates(Vector2 pos, uint mapId) {
-		ushort scale = Service.DataManager.GetExcelSheet<Map>().GetRowOrDefault(mapId)?.SizeFactor ?? 100;
-		float num = scale / 100f;
-		float x = (float)(((pos.X - 1.0) * num / 41.0 * 2048.0) - 1024.0) / num * 1000f;
-		float y = (float)(((pos.Y - 1.0) * num / 41.0 * 2048.0) - 1024.0) / num * 1000f;
-		x = (int)(MathF.Round(x, 3, MidpointRounding.AwayFromZero) * 1000) * 0.001f / 1000f;
-		y = (int)(MathF.Round(y, 3, MidpointRounding.AwayFromZero) * 1000) * 0.001f / 1000f;
-		return ((int)x, (int)y);
-	}
-
-	private static Vector2 ConvertPixelPositionToMapCoordinate(int x, int y, float scale) {
-		float num = scale / 100f;
-		return new Vector2(
-			ConvertRawPositionToMapCoordinate((int)((x - 1024) * num * 1000f), scale),
-			ConvertRawPositionToMapCoordinate((int)((y - 1024) * num * 1000f), scale));
-	}
-
-	private static float ConvertRawPositionToMapCoordinate(int pos, float scale) {
-		float num1 = scale / 100f;
-		float num2 = (float)(pos * (double)num1 / 1000.0f);
-		return (40.96f / num1 * ((num2 + 1024.0f) / 2048.0f)) + 1.0f;
-	}
-
-	public static void TeleportToNearestAetheryte(uint territoryType, uint mapId, uint mobHuntId) {
-		Map? mapRow = Service.DataManager.Excel.GetSheet<Map>().GetRowOrDefault(mapId);
-
-		if (mapRow == null) {
-			return;
-		}
-
-		uint? nearestAetheryteId = Service.DataManager.GetSubrowExcelSheet<MapMarker>()[mapRow.Value.MapMarkerRange]
-			.Where(x => x.DataType == 3 && x.RowId == mapRow.Value.MapMarkerRange)
-			.Select(
-				x => new {
-					distance = Vector2.DistanceSquared(
-						Database[mobHuntId].Coordinate,
-						ConvertPixelPositionToMapCoordinate(x.X, x.Y, mapRow.Value.SizeFactor)),
-					rowId = x.DataKey.RowId
-				})
-			.OrderBy(x => x.distance)
-			.FirstOrDefault()?.rowId;
-
-		Aetheryte? nearestAetheryte =
-			territoryType == 399 // Support the unique case of aetheryte not being in the same map
-				? mapRow.Value.TerritoryType.ValueNullable?.Aetheryte.Value
-				: Service.DataManager.GetExcelSheet<Aetheryte>().FirstOrDefault(x =>
-					x.IsAetheryte && x.Territory.Value.RowId == territoryType && x.RowId == nearestAetheryteId);
-
-		if (nearestAetheryte == null) {
-			return;
-		}
-
-		Plugin.TeleportConsumer?.Teleport(nearestAetheryte.Value.RowId);
-	}
 }

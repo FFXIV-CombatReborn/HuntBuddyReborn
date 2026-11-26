@@ -1,33 +1,42 @@
 ﻿using System;
-using System.Linq;
+using Dalamud.Plugin;
+using ECommons.DalamudServices;
 
-namespace HuntBuddy.Ipc;
+namespace HuntBuddy.IPC;
+
 public abstract class ConsumerBase {
-	public const int MS_PER_AVAILABILITY_RECHECK = 5000;
+	public const int MsPerAvailabilityRecheck = 5000;
 
 	public abstract string RequiredPlugin { get; }
 
-	private bool isAvailable;
-	private long timeSinceLastCheck;
+	private long timeSinceLastCheck = -MsPerAvailabilityRecheck;
 
 	public bool IsAvailable {
 		get {
-			if (Environment.TickCount64 > this.timeSinceLastCheck + MS_PER_AVAILABILITY_RECHECK) {
-				if (Service.PluginInterface.InstalledPlugins.Any(p => p.IsLoaded && p.InternalName == this.RequiredPlugin)) {
+			if (Environment.TickCount64 > this.timeSinceLastCheck + MsPerAvailabilityRecheck) {
+				bool loaded = false;
+				foreach (IExposedPlugin plugin in Svc.PluginInterface.InstalledPlugins) {
+					if (plugin.IsLoaded && plugin.InternalName == this.RequiredPlugin) {
+						loaded = true;
+						break;
+					}
+				}
+
+				if (loaded) {
 					try {
-						this.isAvailable = this.Validate();
+						field = this.Validate();
 					}
 					catch {
-						this.isAvailable = false;
+						field = false;
 					}
 				}
 				else {
-					this.isAvailable = false;
+					field = false;
 				}
 				this.timeSinceLastCheck = Environment.TickCount64;
 			}
 
-			return this.isAvailable;
+			return field;
 		}
 	}
 

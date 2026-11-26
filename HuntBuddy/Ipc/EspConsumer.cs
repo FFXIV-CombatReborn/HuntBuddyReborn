@@ -1,26 +1,30 @@
 ﻿using System;
-
 using Dalamud.Plugin.Ipc;
+using ECommons.DalamudServices;
 
-namespace HuntBuddy.Ipc;
+namespace HuntBuddy.IPC;
 
 public class EspConsumer: ConsumerBase {
 	public override string RequiredPlugin { get; } = "XivEsp";
 	protected override bool Validate() {
+		if (this.getUnifiedSearch == null || this.setSubstringSearch == null) {
+			return false;
+		}
+
 		this.getUnifiedSearch.InvokeFunc();
 		return true;
 	}
 
-	private ICallGateSubscriber<string> getUnifiedSearch = null!;
-	private ICallGateSubscriber<string, object> setSubstringSearch = null!;
+	private ICallGateSubscriber<string>? getUnifiedSearch;
+	private ICallGateSubscriber<string, object>? setSubstringSearch;
 
 	private void Subscribe() {
 		try {
-			this.getUnifiedSearch = Service.PluginInterface.GetIpcSubscriber<string>("XivEsp.GetSearch");
-			this.setSubstringSearch = Service.PluginInterface.GetIpcSubscriber<string, object>("XivEsp.SetSubstring");
+			this.getUnifiedSearch = Svc.PluginInterface.GetIpcSubscriber<string>("XivEsp.GetSearch");
+			this.setSubstringSearch = Svc.PluginInterface.GetIpcSubscriber<string, object>("XivEsp.SetSubstring");
 		}
 		catch (Exception ex) {
-			Service.PluginLog.Debug($"Failed to subscribe to XivEsp\nReason: {ex}");
+			Svc.Log.Debug($"Failed to subscribe to XivEsp\nReason: {ex}");
 		}
 	}
 
@@ -28,10 +32,13 @@ public class EspConsumer: ConsumerBase {
 
 	public bool CanSetSearch {
 		get {
+			if (this.getUnifiedSearch == null) {
+				return false;
+			}
+
 			try {
 				string current = this.getUnifiedSearch.InvokeFunc();
-				char type = current[0];
-				return type is 'N' or 'S';
+				return string.IsNullOrEmpty(current) || current[0] is 'N' or 'S';
 			}
 			catch {
 				return false;
@@ -39,19 +46,23 @@ public class EspConsumer: ConsumerBase {
 		}
 	}
 	public bool SearchFor(string target) {
+		if (this.setSubstringSearch == null) {
+			return false;
+		}
+
 		try {
 			if (this.CanSetSearch) {
 				this.setSubstringSearch.InvokeAction(target);
 				return true;
 			}
 			else {
-				Service.Chat.Print("Cannot override complex (glob/regex) XivEsp search");
+				Svc.Chat.Print("Cannot override complex (glob/regex) XivEsp search");
 				return false;
 			}
 		}
 		catch (Exception ex) {
-			Service.PluginLog.Error($"XivEsp is not responding to IPC: {ex}");
-			Service.Chat.PrintError("XivEsp plugin is not responding");
+			Svc.Log.Error($"XivEsp is not responding to IPC: {ex}");
+			Svc.Chat.PrintError("XivEsp plugin is not responding");
 			return false;
 		}
 	}
